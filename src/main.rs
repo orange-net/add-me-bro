@@ -1,6 +1,10 @@
-use axum::{Json, Router, routing::get};
-
+use axum::{Json, Router, http::Error, routing::get};
+use color_eyre::Result;
 use serde_json::{Value, json};
+
+use crate::conf::ServiceConfig;
+
+mod conf;
 
 async fn root() -> &'static str {
     "Hello, AddMeBro!"
@@ -11,8 +15,11 @@ async fn health_check() -> Json<Value> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+    color_eyre::install()?;
     tracing_subscriber::fmt::init();
+
+    let cfg = ServiceConfig::new()?;
 
     let app = Router::new()
         .route("/", get(root))
@@ -24,4 +31,6 @@ async fn main() {
     println!("listening on {}", listener.local_addr().unwrap());
 
     axum::serve(listener, app).await.unwrap();
+
+    Ok(())
 }
