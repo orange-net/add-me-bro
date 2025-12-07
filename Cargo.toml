@@ -1,0 +1,11 @@
+[package]
+name = "add-me-bro"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.7"
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.0.228", features = ["full"] }
+tracing = "0.1.43"
+tracing-subscriber = "0.3.22"
