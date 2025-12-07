@@ -1,16 +1,22 @@
-use axum::{Json, Router, routing::get, serve::Listener};
+use axum::{Json, Router, routing::get};
 
-use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 async fn root() -> &'static str {
-    return "Hello, AddMeBro!";
+    "Hello, AddMeBro!"
+}
+
+async fn health_check() -> Json<Value> {
+    Json(json!({"status": "Healthy"}))
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = Router::new().route("/", get(root));
+    let app = Router::new()
+        .route("/", get(root))
+        .route("/health", get(health_check));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 

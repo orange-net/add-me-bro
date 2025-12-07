@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -31,15 +32,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image tag
+        id: image-tag
+        run: echo "TAG=${{ github.run_id }}" >> $GITHUB_OUTPUT
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/orange-net/add-me-bro
           tags: |
-            type=sha,prefix={{branch}}-
-            type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.run_id }}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -50,3 +54,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/1027316074/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+          service_account: 'github-actions-add-me-bro@orange-net-480419.iam.gserviceaccount.com'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy add-me-bro \
+            --project=orange-net-480419 \
+            --region=europe-west1 \
+            --image=europe-west1-docker.pkg.dev/orange-net-480419/add-me-bro/orange-net/add-me-bro:${{ steps.image-tag.outputs.TAG }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=3000 \
+            --cpu=1 \
+            --memory=512Mi \
+            --max-instances=3 \
+            --timeout=300 \
+            --concurrency=80
