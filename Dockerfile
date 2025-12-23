@@ -4,9 +4,7 @@ FROM rust:1.91.1-alpine3.22 AS builder
 WORKDIR /app
 
 COPY . .
-RUN ls -al
 RUN cargo build --release
-RUN ls -al
 
 # Production Image Stage
 FROM scratch AS prod

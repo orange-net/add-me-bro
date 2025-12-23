@@ -1,18 +1,17 @@
-use axum::{Json, Router, http::Error, routing::get};
+mod conf;
+mod connections;
+mod db;
+mod entity;
+mod errors;
+mod guards;
+mod health;
+mod routes;
+
 use color_eyre::Result;
-use serde_json::{Value, json};
 
 use crate::conf::ServiceConfig;
-
-mod conf;
-
-async fn root() -> &'static str {
-    "Hello, AddMeBro!"
-}
-
-async fn health_check() -> Json<Value> {
-    Json(json!({"status": "Healthy"}))
-}
+use crate::db::DBPoolBuilder;
+use crate::routes::AppState;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,10 +20,16 @@ async fn main() -> Result<()> {
 
     let cfg = ServiceConfig::new()?;
 
-    let app = Router::new()
-        .route("/", get(root))
-        .route("/health", get(health_check));
+    let pool = DBPoolBuilder::default()
+        .host(cfg.database.host)
+        .port(cfg.database.port)
+        .username(cfg.database.username)
+        .password(cfg.database.password)
+        .db_name(cfg.database.database_name)
+        .build()
+        .await?;
 
+    let app = routes::setup_routes().with_state(AppState::new(pool.db));
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
