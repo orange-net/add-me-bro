@@ -11,6 +11,8 @@ pub struct Model {
     pub id: i32,
     pub initiator_uid: i32,
     pub recipient_uid: i32,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub connection_key: Option<String>,
     pub status: String,
     pub created_at: Option<DateTimeWithTimeZone>,
     pub updated_at: Option<DateTimeWithTimeZone>,

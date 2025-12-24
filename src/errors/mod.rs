@@ -18,7 +18,7 @@ pub enum ApplicationErrorType {
 #[display("ErrorType: {err_type}, ErrorCode: {code}, Message: {message}")]
 pub struct ApplicationError {
     pub err_type: ApplicationErrorType,
-    pub code: i16,
+    pub code: u16,
     pub message: String,
 }
 
