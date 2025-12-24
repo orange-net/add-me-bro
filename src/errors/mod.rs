@@ -8,6 +8,7 @@ use validator::ValidationErrors;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Display)]
 pub enum ApplicationErrorType {
+    ResourceNotFound,
     Validation,
     Internal,
     #[default]
@@ -35,6 +36,7 @@ impl IntoResponse for ApplicationError {
     fn into_response(self) -> axum::response::Response {
         let status = match self.err_type {
             ApplicationErrorType::Validation => StatusCode::BAD_REQUEST,
+            ApplicationErrorType::ResourceNotFound => StatusCode::NOT_FOUND,
             ApplicationErrorType::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             ApplicationErrorType::Default => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -112,6 +114,16 @@ impl From<ValidationErrors> for ApplicationError {
             code: 400,
             err_type: ApplicationErrorType::Validation,
             message: err_msg,
+        }
+    }
+}
+
+impl From<sea_orm::DbErr> for ApplicationError {
+    fn from(sea_orm_err: sea_orm::DbErr) -> Self {
+        ApplicationError {
+            err_type: ApplicationErrorType::Internal,
+            code: 500,
+            message: sea_orm_err.to_string(),
         }
     }
 }

@@ -2,21 +2,23 @@ use std::cmp::{max, min};
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, State},
     http::StatusCode,
 };
 use derive_builder::Builder;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait,
+    ActiveValue::{self, Set},
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use crate::{
     entity::{
         self,
-        connections::{self, Model},
+        connections::{self, ActiveModel, Model},
     },
     errors::{ApplicationError, ApplicationErrorBuilder, ApplicationErrorType},
     guards::ValidatedJson,
@@ -29,6 +31,26 @@ pub struct CreateConnectionInput {
     pub initiator_uid: i32,
     #[validate(range(min = 0, max = 9999999))]
     pub recipient_uid: i32,
+}
+
+#[derive(Builder, Debug, Deserialize, Validate)]
+pub struct UpdateConnectionInput {
+    #[validate(custom(function = "validate_status"))]
+    pub status: String,
+}
+
+fn validate_status(status: &str) -> Result<(), ValidationError> {
+    const ALLOWED: &[&str] = &[
+        "pending", "accepted", "rejected", "Pending", "Accepted", "Rejected",
+    ];
+
+    if ALLOWED.contains(&status) {
+        Ok(())
+    } else {
+        let mut err = ValidationError::new("invalid_status");
+        err.message = Some("status must be one of: pending, accepted, rejected".into());
+        Err(err)
+    }
 }
 
 // #[derive(Builder, Debug)]
@@ -79,6 +101,25 @@ pub async fn users_have_conn_req(
         .await?;
 
     Ok(conn)
+}
+
+pub async fn get_connection_by_id_or_fail(
+    conn_id: i32,
+    db: &DatabaseConnection,
+) -> Result<connections::Model, ApplicationError> {
+    let conn = connections::Entity::find_by_id(conn_id).one(db).await?;
+
+    if let Some(val) = conn {
+        return Ok(val);
+    } else {
+        let err = ApplicationError {
+            code: StatusCode::NOT_FOUND.as_u16(),
+            err_type: ApplicationErrorType::ResourceNotFound,
+            message: format!("Connection with id {} not found", conn_id),
+        };
+
+        return Err(err);
+    }
 }
 
 pub async fn create_conn(
@@ -134,7 +175,7 @@ pub async fn create_conn(
     Ok(connection)
 }
 
-pub async fn delete_connection_by_id(id: i32, b: &DatabaseConnection) -> eyre::Result<bool> {
+pub async fn delete_connection_by_id(id: i32, db: &DatabaseConnection) -> eyre::Result<bool> {
     let del_response = connections::Entity::delete_by_id(id).exec(db).await?;
 
     if del_response.rows_affected > 0 {
@@ -144,6 +185,7 @@ pub async fn delete_connection_by_id(id: i32, b: &DatabaseConnection) -> eyre::R
     Ok(false)
 }
 
+#[axum::debug_handler]
 pub async fn create_conn_handler(
     State(state): State<AppState>,
     ValidatedJson(payload): ValidatedJson<CreateConnectionInput>,
@@ -159,11 +201,23 @@ pub struct RequestById {
 
 pub async fn delete_conn_handler(
     State(state): State<AppState>,
-    query: Query<RequestById>,
+    Path(conn_id): Path<i32>,
 ) -> Result<Json<Value>, ApplicationError> {
-    delete_connection_by_id(query.id, &state.db).await?;
+    let _ = get_connection_by_id_or_fail(conn_id, &state.db);
 
-    Ok(Json(json!({"success": true, "deleted": true})))
+    let deleted = delete_connection_by_id(conn_id, &state.db).await?;
+    Ok(Json(json!({"success": deleted, "deleted": deleted })))
 }
 
-pub fn update_conn_status() {}
+pub async fn patch_conn_handler(
+    State(state): State<AppState>,
+    Path(conn_id): Path<i32>,
+    ValidatedJson(payload): ValidatedJson<UpdateConnectionInput>,
+) -> Result<Json<Model>, ApplicationError> {
+    let conn = get_connection_by_id_or_fail(conn_id, &state.db).await?;
+    let mut conn: connections::ActiveModel = conn.into();
+    conn.status = Set(payload.status);
+    let conn = conn.update(&state.db).await?;
+
+    Ok(Json(conn))
+}
