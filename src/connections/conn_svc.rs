@@ -1,11 +1,16 @@
 use std::cmp::{max, min};
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
 use derive_builder::Builder;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 use serde::Deserialize;
+use serde_json::{Value, json};
 use validator::Validate;
 
 use crate::{
@@ -24,11 +29,6 @@ pub struct CreateConnectionInput {
     pub initiator_uid: i32,
     #[validate(range(min = 0, max = 9999999))]
     pub recipient_uid: i32,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DeleteConnectionInput {
-    id: i32,
 }
 
 // #[derive(Builder, Debug)]
@@ -134,6 +134,16 @@ pub async fn create_conn(
     Ok(connection)
 }
 
+pub async fn delete_connection_by_id(id: i32, b: &DatabaseConnection) -> eyre::Result<bool> {
+    let del_response = connections::Entity::delete_by_id(id).exec(db).await?;
+
+    if del_response.rows_affected > 0 {
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
 pub async fn create_conn_handler(
     State(state): State<AppState>,
     ValidatedJson(payload): ValidatedJson<CreateConnectionInput>,
@@ -142,12 +152,18 @@ pub async fn create_conn_handler(
     Ok(Json(conn_model))
 }
 
+#[derive(Deserialize, Debug)]
+pub struct RequestById {
+    id: i32,
+}
+
 pub async fn delete_conn_handler(
     State(state): State<AppState>,
-    Query(): ValidatedJson<DeleteConnectionInput>,
-) -> Result<Json<Model>, ApplicationError> {
-    let conn_model = create_conn(payload.initiator_uid, payload.recipient_uid, state.db).await?;
-    Ok(Json(conn_model))
+    query: Query<RequestById>,
+) -> Result<Json<Value>, ApplicationError> {
+    delete_connection_by_id(query.id, &state.db).await?;
+
+    Ok(Json(json!({"success": true, "deleted": true})))
 }
 
 pub fn update_conn_status() {}
